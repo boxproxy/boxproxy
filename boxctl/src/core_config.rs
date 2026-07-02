@@ -8,10 +8,12 @@ use std::fs;
 
 mod common;
 mod mihomo;
+mod rule_set_preload;
 mod sing_box;
 mod util;
 use common::*;
 use mihomo::sync_mihomo;
+use rule_set_preload::preload_sing_box_rule_sets;
 use sing_box::sync_sing_box;
 use util::*;
 
@@ -36,5 +38,12 @@ pub fn sync(config: &Config) -> Result<()> {
             Ok(())
         }
         other => Err(format!("unknown core: {other}")),
+    }
+}
+
+pub fn preload_rule_sets(config: &Config) -> Result<()> {
+    match config.bin_name.as_str() {
+        "sing-box" => preload_sing_box_rule_sets(config),
+        _ => Ok(()),
     }
 }

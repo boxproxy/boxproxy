@@ -3,7 +3,7 @@ use super::*;
 pub(super) fn core_check_command(config: &Config) -> (String, Vec<String>) {
     let bin = config.bin_path.to_string_lossy().to_string();
     let dir = config.core_dir().to_string_lossy().to_string();
-    let file = config.config_path().to_string_lossy().to_string();
+    let file = config.service_config_path().to_string_lossy().to_string();
 
     match config.bin_name.as_str() {
         "mihomo" => (bin, vec!["-t".into(), "-d".into(), dir, "-f".into(), file]),
@@ -21,7 +21,7 @@ pub(super) fn core_check_command(config: &Config) -> (String, Vec<String>) {
 pub(super) fn core_run_command(config: &Config) -> (String, Vec<String>) {
     let mut args = Vec::new();
     let dir = config.core_dir().to_string_lossy().to_string();
-    let file = config.config_path().to_string_lossy().to_string();
+    let file = config.service_config_path().to_string_lossy().to_string();
     let bin = config.bin_path.to_string_lossy().to_string();
 
     match config.bin_name.as_str() {

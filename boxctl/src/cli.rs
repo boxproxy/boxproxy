@@ -127,8 +127,9 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<Cli> {
             "--ipv6" => overrides.ipv6_mode = Some("enable".to_string()),
             "--no-ipv6" => overrides.ipv6_mode = Some("bypass".to_string()),
             "--ipv6-mode" => {
-                overrides.ipv6_mode =
-                    Some(normalize_ipv6_mode(&value_for(key, inline, &args, &mut i)?)?);
+                overrides.ipv6_mode = Some(normalize_ipv6_mode(&value_for(
+                    key, inline, &args, &mut i,
+                )?)?);
             }
             "--tcp" => overrides.proxy_tcp = Some(true),
             "--no-tcp" => overrides.proxy_tcp = Some(false),
@@ -185,6 +186,14 @@ pub(crate) fn parse_args(args: Vec<String>) -> Result<Cli> {
             }
             "--fake-ip6-range" => {
                 overrides.fake_ip6_range = Some(value_for(key, inline, &args, &mut i)?);
+            }
+            "--sing-rule-set-preload" => overrides.sing_rule_set_preload = Some(true),
+            "--no-sing-rule-set-preload" => overrides.sing_rule_set_preload = Some(false),
+            "--sing-rule-set-refresh" => overrides.sing_rule_set_preload_refresh = Some(true),
+            "--no-sing-rule-set-refresh" => overrides.sing_rule_set_preload_refresh = Some(false),
+            "--sing-rule-set-dir" => {
+                overrides.sing_rule_set_preload_dir =
+                    Some(PathBuf::from(value_for(key, inline, &args, &mut i)?));
             }
             "--help" | "-h" => {
                 print_usage();
@@ -287,12 +296,7 @@ fn parse_command(rest: &[String], overrides: &mut ConfigOverrides) -> Result<Com
 
 /// Resolve a value flag: prefer the inline `--flag=value` form, otherwise
 /// consume the next argument (advancing `i` past it).
-fn value_for(
-    flag: &str,
-    inline: Option<&str>,
-    args: &[String],
-    i: &mut usize,
-) -> Result<String> {
+fn value_for(flag: &str, inline: Option<&str>, args: &[String], i: &mut usize) -> Result<String> {
     if let Some(value) = inline {
         return Ok(value.to_string());
     }
@@ -369,6 +373,9 @@ Options:
   --ipv6                   Enable IPv6 proxying
   --no-ipv6                Bypass IPv6
   --ipv6-mode MODE         IPv6 mode: enable|bypass|disable
+  --sing-rule-set-preload  Preload sing-box remote rule sets before start
+  --sing-rule-set-refresh  Refresh cached sing-box rule sets before start
+  --sing-rule-set-dir PATH Directory for preloaded sing-box rule sets
   --memcg                  Enable memory limit
   --memcg-limit LIMIT      Memory limit, for example 100M
   --cpuset                 Enable CPU assignment

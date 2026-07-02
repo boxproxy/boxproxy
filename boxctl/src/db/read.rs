@@ -71,6 +71,9 @@ pub(super) fn load_profile(conn: &Connection) -> Result<RuntimeData> {
                     macs_list: Vec::new(),
                     intranet_cidrs4: Vec::new(),
                     intranet_cidrs6: Vec::new(),
+                    sing_rule_set_preload: false,
+                    sing_rule_set_preload_refresh: false,
+                    sing_rule_set_preload_dir: String::new(),
                 })
             },
         )
@@ -79,14 +82,29 @@ pub(super) fn load_profile(conn: &Connection) -> Result<RuntimeData> {
 }
 
 pub(super) fn read_app_setting(conn: &Connection, key: &str, default: &str) -> String {
+    normalize_app_language(&read_app_setting_raw(conn, key, default))
+}
+
+pub(super) fn read_app_setting_raw(conn: &Connection, key: &str, default: &str) -> String {
     conn.query_row(
         "SELECT value FROM app_settings WHERE key = ?1",
         [key],
         |row| row.get::<_, String>(0),
     )
     .ok()
-    .map(|value| normalize_app_language(&value))
     .unwrap_or_else(|| default.to_string())
+}
+
+pub(super) fn read_app_setting_bool(conn: &Connection, key: &str, default: bool) -> bool {
+    match read_app_setting_raw(conn, key, if default { "true" } else { "false" })
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "1" | "true" | "enable" | "enabled" | "yes" | "on" => true,
+        "0" | "false" | "disable" | "disabled" | "no" | "off" => false,
+        _ => default,
+    }
 }
 
 pub(super) fn read_uid_list(conn: &Connection, table: &str, column: &str) -> Vec<String> {

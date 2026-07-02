@@ -15,7 +15,7 @@ pub(super) fn run_config_check(config: &Config, runner: &Runner) -> Result<()> {
         logger::debug_key(
             config,
             LogKey::ConfigCheckCacheHit,
-            &[arg("config", config.config_path().display())],
+            &[arg("config", config.service_config_path().display())],
         );
         return Ok(());
     }
@@ -89,7 +89,7 @@ pub(super) fn config_check_stamp(config: &Config) -> Option<String> {
     Some(format!(
         "core={}\nconfig={}\nmode={}\n",
         file_stamp(&config.bin_path)?,
-        file_stamp(config.config_path())?,
+        file_stamp(&config.service_config_path())?,
         config.network_mode
     ))
 }

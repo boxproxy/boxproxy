@@ -60,6 +60,9 @@ pub struct RuntimeData {
     pub macs_list: Vec<String>,
     pub intranet_cidrs4: Vec<String>,
     pub intranet_cidrs6: Vec<String>,
+    pub sing_rule_set_preload: bool,
+    pub sing_rule_set_preload_refresh: bool,
+    pub sing_rule_set_preload_dir: String,
 }
 
 pub fn load_runtime_data(db_path: &Path) -> Result<RuntimeData> {
@@ -103,5 +106,10 @@ pub fn load_runtime_data(db_path: &Path) -> Result<RuntimeData> {
     profile.macs_list = read_string_list(&conn, "hotspot_macs", "value")?;
     profile.intranet_cidrs4 = read_string_list(&conn, "intranet_ipv4_cidrs", "value")?;
     profile.intranet_cidrs6 = read_string_list(&conn, "intranet_ipv6_cidrs", "value")?;
+    profile.sing_rule_set_preload = read_app_setting_bool(&conn, "sing_rule_set_preload", false);
+    profile.sing_rule_set_preload_refresh =
+        read_app_setting_bool(&conn, "sing_rule_set_preload_refresh", false);
+    profile.sing_rule_set_preload_dir =
+        read_app_setting_raw(&conn, "sing_rule_set_preload_dir", "");
     Ok(profile)
 }

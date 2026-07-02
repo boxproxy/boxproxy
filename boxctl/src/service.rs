@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::core_config;
 use crate::exec::{Runner, SIGKILL, SIGTERM};
 use crate::logger;
 use crate::resource;
@@ -29,11 +30,7 @@ pub fn start(config: &Config, runner: &Runner) -> Result<()> {
     match start_inner(config, runner) {
         Ok(()) => Ok(()),
         Err(err) => {
-            logger::error_key(
-                config,
-                LogKey::ServiceStartFailed,
-                &[arg("error", &err)],
-            );
+            logger::error_key(config, LogKey::ServiceStartFailed, &[arg("error", &err)]);
             Err(err)
         }
     }
@@ -65,6 +62,7 @@ fn start_inner(config: &Config, runner: &Runner) -> Result<()> {
     }
 
     prepare_permissions(config, runner)?;
+    core_config::preload_rule_sets(config)?;
     run_config_check(config, runner)?;
 
     let envs = core_env(config);
@@ -107,7 +105,11 @@ fn start_inner(config: &Config, runner: &Runner) -> Result<()> {
         if !pid_matches_core(config, &pid.to_string()) {
             let _ = remove_pid(config);
             let detail = read_log_tail(&config.bin_log);
-            let detail = if detail.is_empty() { "-" } else { detail.as_str() };
+            let detail = if detail.is_empty() {
+                "-"
+            } else {
+                detail.as_str()
+            };
             logger::error_key(
                 config,
                 LogKey::ServiceExitedAfterStart,
