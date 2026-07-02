@@ -19,6 +19,19 @@ database, Wi-Fi monitoring, and the service lifecycle.
 reworked in Rust for speed, atomic batched iptables updates, and a single
 self-contained binary with no shell dependencies.
 
+For sing-box configurations that use remote rule sets, `boxctl` can optionally
+preload those rule sets before starting the core and run sing-box with a
+generated config that points to local cached files. This avoids first-start
+failures caused by the sing-box process resolving or downloading rule-set URLs
+before the proxy path is available.
+
+Enable it with `--sing-rule-set-preload`, or set
+`app_settings.sing_rule_set_preload=true` in `box.db`. Cached rule sets live in
+`$BOX_HOME/sing-box/rule-set` by default; use `--sing-rule-set-dir PATH` or
+`app_settings.sing_rule_set_preload_dir` to override the directory. Use
+`--sing-rule-set-refresh` or `app_settings.sing_rule_set_preload_refresh=true`
+to refresh an existing cache before start.
+
 ```sh
 cd boxctl
 cargo build --release --target aarch64-linux-android

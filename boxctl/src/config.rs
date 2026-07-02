@@ -51,6 +51,9 @@ pub struct ConfigOverrides {
     pub tun_device: Option<String>,
     pub fake_ip_range: Option<String>,
     pub fake_ip6_range: Option<String>,
+    pub sing_rule_set_preload: Option<bool>,
+    pub sing_rule_set_preload_refresh: Option<bool>,
+    pub sing_rule_set_preload_dir: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +110,10 @@ pub struct Config {
     pub tun_device: String,
     pub fake_ip_range: String,
     pub fake_ip6_range: String,
+    pub sing_rule_set_preload: bool,
+    pub sing_rule_set_preload_refresh: bool,
+    pub sing_rule_set_preload_dir: PathBuf,
+    pub sing_rule_set_prepared_config: PathBuf,
     pub core_config_sources: CoreConfigSources,
     pub tun_force_proxy_cidrs: Vec<String>,
     pub tun_force_proxy_cidrs6: Vec<String>,
@@ -368,6 +375,20 @@ impl Config {
                     }
                 })
                 .unwrap_or(default_fake_ip6_range),
+            sing_rule_set_preload: overrides
+                .sing_rule_set_preload
+                .unwrap_or(db_data.sing_rule_set_preload),
+            sing_rule_set_preload_refresh: overrides
+                .sing_rule_set_preload_refresh
+                .unwrap_or(db_data.sing_rule_set_preload_refresh),
+            sing_rule_set_preload_dir: overrides.sing_rule_set_preload_dir.clone().unwrap_or_else(
+                || {
+                    non_empty_value(&db_data.sing_rule_set_preload_dir)
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| paths.home.join("sing-box").join("rule-set"))
+                },
+            ),
+            sing_rule_set_prepared_config: paths.state.join("sing-box.rule-set-preload.json"),
             core_config_sources: sources,
             tun_force_proxy_cidrs: Vec::new(),
             tun_force_proxy_cidrs6: Vec::new(),
@@ -391,6 +412,17 @@ impl Config {
 
     pub fn config_path(&self) -> &Path {
         &self.config_path
+    }
+
+    pub fn service_config_path(&self) -> PathBuf {
+        if self.bin_name == "sing-box"
+            && self.sing_rule_set_preload
+            && self.sing_rule_set_prepared_config.is_file()
+        {
+            self.sing_rule_set_prepared_config.clone()
+        } else {
+            self.config_path.clone()
+        }
     }
 }
 
