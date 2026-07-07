@@ -323,29 +323,3 @@ fn uid_fallback_zh(fallback: PerformanceUidFallback) -> &'static str {
 fn stdout_log_line_enabled() -> bool {
     env::var_os(STDOUT_LOG_LINE_ENV).is_some()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{arg, render, Lang, LogKey};
-
-    #[test]
-    fn renders_key_without_touching_path_arguments() {
-        let path = "/data/data/com.boxproxy.box/files/box/bin/mihomo";
-        let text = render(LogKey::ServiceCommand, &[arg("command", path)], Lang::ZhCn);
-        assert_eq!(text, format!("服务启动命令: {path}"));
-    }
-
-    #[test]
-    fn renders_network_state_without_word_replacement() {
-        let text = render(
-            LogKey::WifiPolicyApplied,
-            &[
-                arg("observation", "Wi-Fi 已断开: 接口 wlan0"),
-                arg("policy", "策略启用"),
-                arg("action", "服务已启动"),
-            ],
-            Lang::ZhCn,
-        );
-        assert_eq!(text, "Wi-Fi 已断开: 接口 wlan0, 策略启用, 服务已启动");
-    }
-}

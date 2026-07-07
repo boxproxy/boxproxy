@@ -67,8 +67,7 @@ pub(super) fn ensure_empty_file(path: &Path) -> Result<()> {
         fs::create_dir_all(parent)
             .map_err(|err| format!("create directory {} failed: {err}", parent.display()))?;
     }
-    fs::write(path, "")
-        .map_err(|err| format!("create empty file {} failed: {err}", path.display()))
+    fs::write(path, "").map_err(|err| format!("create empty file {} failed: {err}", path.display()))
 }
 
 pub(super) fn write_lines_file(path: &Path, lines: &[String]) -> Result<()> {
@@ -560,7 +559,10 @@ pub(super) fn command_failure_message(program: &str, args: &[String], output: &O
         output.stderr.as_str()
     };
     if details.is_empty() {
-        format!("{} execution failed", crate::exec::shell_join(program, args))
+        format!(
+            "{} execution failed",
+            crate::exec::shell_join(program, args)
+        )
     } else {
         format!(
             "{} execution failed: {details}",

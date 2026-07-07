@@ -35,7 +35,10 @@ pub(super) fn prepare_permissions(config: &Config, runner: &Runner) -> Result<()
         logger::warn_key(
             config,
             LogKey::CorePermissionsFailed,
-            &[arg("path", config.bin_path.display()), arg("failed", failed)],
+            &[
+                arg("path", config.bin_path.display()),
+                arg("failed", failed),
+            ],
         );
     }
     Ok(())

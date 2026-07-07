@@ -1,6 +1,6 @@
 use crate::Result;
-use std::fs::File;
-use std::io::Write;
+use std::fs::{self, File};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -49,7 +49,7 @@ impl Runner {
         let output = Command::new(program)
             .args(args.iter().map(|value| value.as_ref()))
             .output()
-            .map_err(|err| format!("execute {program} failed: {err}"))?;
+            .map_err(|err| command_start_error("execute", program, err))?;
 
         Ok(Output {
             ok: output.status.success(),
@@ -104,7 +104,7 @@ impl Runner {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|err| format!("execute {program} failed: {err}"))?;
+            .map_err(|err| command_start_error("execute", program, err))?;
 
         if let Some(stdin) = child.stdin.as_mut() {
             stdin
@@ -156,7 +156,7 @@ impl Runner {
 
         let child = command
             .spawn()
-            .map_err(|err| format!("start {program} failed: {err}"))?;
+            .map_err(|err| command_start_error("start", program, err))?;
 
         Ok(Some(child.id()))
     }
@@ -189,6 +189,178 @@ fn send_signal(pid: i32, sig: i32) {
         .arg(format!("-{sig}"))
         .arg(pid.to_string())
         .status();
+}
+
+fn command_start_error(action: &str, program: &str, err: io::Error) -> String {
+    let diagnostics = executable_diagnostics(program);
+    if diagnostics.is_empty() {
+        format!("{action} {program} failed: {err}")
+    } else {
+        format!("{action} {program} failed: {err}; {diagnostics}")
+    }
+}
+
+fn executable_diagnostics(program: &str) -> String {
+    let path = Path::new(program);
+    let mut parts = vec![format!("path={}", path.display())];
+    match fs::metadata(path) {
+        Ok(metadata) => {
+            let kind = if metadata.is_file() {
+                "file"
+            } else if metadata.is_dir() {
+                "dir"
+            } else {
+                "other"
+            };
+            parts.push(format!("type={kind}"));
+            parts.push(format!("len={}", metadata.len()));
+            parts.push(format!("readonly={}", metadata.permissions().readonly()));
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                parts.push(format!(
+                    "mode={:o},uid={},gid={}",
+                    metadata.mode() & 0o7777,
+                    metadata.uid(),
+                    metadata.gid()
+                ));
+            }
+            if metadata.is_file() {
+                if let Some(summary) = elf_summary(path) {
+                    parts.push(summary);
+                }
+            }
+        }
+        Err(meta_err) => {
+            parts.push(format!("metadata={meta_err}"));
+        }
+    }
+    format!("diagnostics: {}", parts.join(", "))
+}
+
+fn elf_summary(path: &Path) -> Option<String> {
+    let mut file = File::open(path).ok()?;
+    let mut header = [0_u8; 64];
+    if file.read_exact(&mut header).is_err() {
+        return Some("elf=unreadable-header".to_string());
+    }
+    if &header[0..4] != b"\x7fELF" {
+        return Some(format!("magic={}", hex_prefix(&header, 8)));
+    }
+
+    let class = match header[4] {
+        1 => "ELF32",
+        2 => "ELF64",
+        other => return Some(format!("elf=unknown-class-{other}")),
+    };
+    let little_endian = match header[5] {
+        1 => true,
+        2 => false,
+        other => return Some(format!("elf={class}, endian=unknown-{other}")),
+    };
+    let machine = read_u16(&header[18..20], little_endian);
+    let interpreter =
+        elf_interpreter(&mut file, &header, little_endian).unwrap_or_else(|| "none".to_string());
+    Some(format!(
+        "elf={class},machine={machine},interpreter={interpreter}"
+    ))
+}
+
+fn elf_interpreter(file: &mut File, header: &[u8; 64], little_endian: bool) -> Option<String> {
+    const PT_INTERP: u32 = 3;
+    let class = header[4];
+    let (phoff, phentsize, phnum) = if class == 1 {
+        (
+            read_u32(&header[28..32], little_endian) as u64,
+            read_u16(&header[42..44], little_endian) as u64,
+            read_u16(&header[44..46], little_endian) as u64,
+        )
+    } else {
+        (
+            read_u64(&header[32..40], little_endian),
+            read_u16(&header[54..56], little_endian) as u64,
+            read_u16(&header[56..58], little_endian) as u64,
+        )
+    };
+    if phoff == 0 || phentsize == 0 || phnum == 0 || phnum > 256 {
+        return None;
+    }
+
+    for index in 0..phnum {
+        let offset = phoff.checked_add(index.checked_mul(phentsize)?)?;
+        file.seek(SeekFrom::Start(offset)).ok()?;
+        let mut ph = vec![0_u8; phentsize as usize];
+        file.read_exact(&mut ph).ok()?;
+        let p_type = read_u32(ph.get(0..4)?, little_endian);
+        if p_type != PT_INTERP {
+            continue;
+        }
+        let (interp_offset, interp_size) = if class == 1 {
+            (
+                read_u32(ph.get(4..8)?, little_endian) as u64,
+                read_u32(ph.get(16..20)?, little_endian) as u64,
+            )
+        } else {
+            (
+                read_u64(ph.get(8..16)?, little_endian),
+                read_u64(ph.get(32..40)?, little_endian),
+            )
+        };
+        return read_c_string_at(file, interp_offset, interp_size);
+    }
+    None
+}
+
+fn read_c_string_at(file: &mut File, offset: u64, size: u64) -> Option<String> {
+    if size == 0 || size > 4096 {
+        return None;
+    }
+    file.seek(SeekFrom::Start(offset)).ok()?;
+    let mut bytes = vec![0_u8; size as usize];
+    file.read_exact(&mut bytes).ok()?;
+    let end = bytes
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(bytes.len());
+    Some(String::from_utf8_lossy(&bytes[..end]).to_string())
+}
+
+fn read_u16(bytes: &[u8], little_endian: bool) -> u16 {
+    let raw = [bytes[0], bytes[1]];
+    if little_endian {
+        u16::from_le_bytes(raw)
+    } else {
+        u16::from_be_bytes(raw)
+    }
+}
+
+fn read_u32(bytes: &[u8], little_endian: bool) -> u32 {
+    let raw = [bytes[0], bytes[1], bytes[2], bytes[3]];
+    if little_endian {
+        u32::from_le_bytes(raw)
+    } else {
+        u32::from_be_bytes(raw)
+    }
+}
+
+fn read_u64(bytes: &[u8], little_endian: bool) -> u64 {
+    let raw = [
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ];
+    if little_endian {
+        u64::from_le_bytes(raw)
+    } else {
+        u64::from_be_bytes(raw)
+    }
+}
+
+fn hex_prefix(bytes: &[u8], len: usize) -> String {
+    bytes
+        .iter()
+        .take(len)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 pub(crate) fn shell_join<S: AsRef<str>>(program: &str, args: &[S]) -> String {

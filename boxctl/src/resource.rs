@@ -9,10 +9,10 @@ use std::path::{Path, PathBuf};
 
 pub fn apply_current(config: &Config, runner: &Runner) -> Result<()> {
     let pid = current_pid(config, runner)?;
-    apply(config, pid)
+    apply(config, runner, pid)
 }
 
-pub fn apply(config: &Config, pid: u32) -> Result<()> {
+pub fn apply(config: &Config, _runner: &Runner, pid: u32) -> Result<()> {
     let mut any_enabled = false;
     let mut applied = Vec::new();
     let mut failed = Vec::new();
@@ -22,13 +22,6 @@ pub fn apply(config: &Config, pid: u32) -> Result<()> {
         match apply_memcg(config, pid) {
             Ok(detail) => applied.push(format!("memory {detail}")),
             Err(err) => failed.push(format!("memory {err}")),
-        }
-    }
-    if config.cgroup_cpuset {
-        any_enabled = true;
-        match apply_cpuset(config, pid) {
-            Ok(detail) => applied.push(format!("cpuset {detail}")),
-            Err(err) => failed.push(format!("cpuset {err}")),
         }
     }
     if config.cgroup_blkio {
@@ -92,22 +85,6 @@ fn apply_memcg(config: &Config, pid: u32) -> Result<String> {
     ))
 }
 
-fn apply_cpuset(config: &Config, pid: u32) -> Result<String> {
-    let root =
-        find_cgroup_mount("cpuset").ok_or_else(|| "cpuset cgroup path not found".to_string())?;
-    let target = ensure_target_dir(&root, &["box", "foreground", "top-app", "apps"])?;
-    init_cpuset_files(&root, &target);
-    let cores = if config.allow_cpu.trim().is_empty() {
-        detect_cpu_range().ok_or_else(|| "detect CPU cores failed".to_string())?
-    } else {
-        config.allow_cpu.trim().to_string()
-    };
-    write_value(&target.join("cpus"), &cores)?;
-    write_value(&target.join("mems"), "0")?;
-    write_pid(&target, pid)?;
-    Ok(format!("-> {}, cores {}", target.display(), cores))
-}
-
 fn apply_blkio(config: &Config, pid: u32) -> Result<String> {
     let root =
         find_cgroup_mount("blkio").ok_or_else(|| "blkio cgroup path not found".to_string())?;
@@ -151,19 +128,6 @@ fn ensure_target_dir(root: &Path, candidates: &[&str]) -> Result<PathBuf> {
     Err(format!("cgroup target unavailable: {}", root.display()))
 }
 
-fn init_cpuset_files(root: &Path, target: &Path) {
-    for name in ["cpus", "mems"] {
-        let source = root.join(name);
-        let dest = target.join(name);
-        if source.is_file() && dest.exists() {
-            continue;
-        }
-        if let Ok(value) = fs::read_to_string(source) {
-            let _ = fs::write(dest, value);
-        }
-    }
-}
-
 fn write_value(path: &Path, value: &str) -> Result<()> {
     fs::write(path, format!("{value}\n"))
         .map_err(|err| format!("write {} failed: {err}", path.display()))
@@ -197,15 +161,6 @@ fn human_size(bytes: u64) -> String {
         format!("{:.2} KiB", bytes as f64 / 1024_f64)
     } else {
         format!("{bytes} B")
-    }
-}
-
-fn detect_cpu_range() -> Option<String> {
-    let count = std::thread::available_parallelism().ok()?.get();
-    if count == 0 {
-        None
-    } else {
-        Some(format!("0-{}", count - 1))
     }
 }
 

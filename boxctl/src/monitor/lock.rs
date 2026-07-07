@@ -57,7 +57,7 @@ fn try_lock_exclusive(_file: &fs::File) -> bool {
 }
 
 pub(super) fn monitor_lock_path(config: &Config) -> PathBuf {
-    config.paths.state.join("wifi_monitor.pid")
+    config.paths.state.join("network_monitor.pid")
 }
 
 pub(super) fn read_monitor_pid(path: &PathBuf) -> Option<u32> {
@@ -77,7 +77,7 @@ pub(super) fn monitor_pid_matches(pid: u32) -> bool {
 
     match fs::read(format!("/proc/{pid}/environ")) {
         Ok(environ) => {
-            let marker = format!("{WIFI_MONITOR_WORKER_ENV}=1");
+            let marker = format!("{MONITOR_WORKER_ENV}=1");
             environ
                 .split(|byte| *byte == 0)
                 .any(|entry| entry == marker.as_bytes())

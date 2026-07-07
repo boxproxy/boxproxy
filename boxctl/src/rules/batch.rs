@@ -1,14 +1,6 @@
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Buffered box-chain operations for one address family, grouped by table.
-///
-/// A session accumulates chain declarations and rule appends, then flushes them
-/// to `iptables-restore --noflush` in a single process per table. Any live
-/// iptables/ip command issued mid-build flushes the pending buffer first (see
-/// `flush_batch`), so the resulting rule order is identical to the per-rule
-/// path — batching only changes *how many* processes are spawned, never the
-/// final ruleset.
 pub(super) struct RuleBatch {
     family: Family,
     tables: BTreeMap<String, TableBatch>,
@@ -16,12 +8,8 @@ pub(super) struct RuleBatch {
 
 #[derive(Default)]
 struct TableBatch {
-    /// Chains to declare (`:chain - [0:0]`) on the next flush.
     decls: Vec<String>,
-    /// Chains already materialized by a prior flush — never re-declared, since
-    /// re-declaring would zero a chain that already holds rules.
     declared: BTreeSet<String>,
-    /// Pending `-A chain args...` appends, in insertion order.
     appends: Vec<(String, Vec<String>)>,
 }
 
@@ -55,8 +43,6 @@ impl<'a> RuleManager<'a> {
         }
     }
 
-    /// Record `ensure_chain` into the active batch. Returns true when buffered,
-    /// false when there is no batch (caller falls back to the live path).
     pub(super) fn batch_record_chain(&self, family: Family, table: &str, chain: &str) -> bool {
         if !is_box_custom_chain(chain) {
             return false;
@@ -75,8 +61,6 @@ impl<'a> RuleManager<'a> {
         true
     }
 
-    /// Record an append into the active batch. The caller must have confirmed
-    /// the chain is box-managed. Returns false when there is no batch.
     pub(super) fn batch_record_append(
         &self,
         family: Family,
@@ -96,11 +80,6 @@ impl<'a> RuleManager<'a> {
         true
     }
 
-    /// Apply all pending box-chain operations and keep the session open.
-    ///
-    /// The batch is taken out for the duration so any command issued here (the
-    /// restore itself, or the live replay on failure) does not re-enter and
-    /// recurse. Pending lists are drained; declarations become materialized.
     pub(super) fn flush_batch(&self) {
         let Some(mut batch) = self.batch.borrow_mut().take() else {
             return;
@@ -114,9 +93,6 @@ impl<'a> RuleManager<'a> {
 
             let applied = self.run_restore(family, table, &tb.decls, &tb.appends);
             if !applied {
-                // Restore unavailable or rejected the block: fall back to the
-                // per-rule path. With the batch taken, these run live and yield
-                // exactly what the non-batched build would have produced.
                 for chain in &tb.decls {
                     let _ = self.ensure_chain(family, table, chain);
                 }

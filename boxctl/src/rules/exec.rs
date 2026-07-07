@@ -165,7 +165,11 @@ impl<'a> RuleManager<'a> {
             return Ok(());
         }
         self.log_command_failure("iptables rule failed", iptables_cmd(family), &full, &output);
-        Err(command_failure_message(iptables_cmd(family), &full, &output))
+        Err(command_failure_message(
+            iptables_cmd(family),
+            &full,
+            &output,
+        ))
     }
 
     pub(super) fn ipt_silent(&self, family: Family, args: &[&str]) {

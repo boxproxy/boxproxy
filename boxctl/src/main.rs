@@ -5,6 +5,7 @@ mod core_config;
 mod db;
 mod exec;
 mod logger;
+mod monitor;
 mod resource;
 mod rules;
 mod service;
@@ -61,8 +62,8 @@ fn run() -> Result<()> {
         Command::Config(ConfigCommand::Sync) => core_config::sync(&config),
         Command::Resource(ResourceCommand::Apply) => resource::apply_current(&config, &runner),
         Command::Cnip(CnipCommand::Reload) => rules::reload_cn_ipset(&config, &runner),
-        Command::Monitor => wifi::monitor(&config, &runner),
-        Command::MonitorStop => wifi::stop_monitor(&config, &runner),
+        Command::Monitor => monitor::run(&config, &runner),
+        Command::MonitorStop => monitor::stop(&config, &runner),
         Command::Wifi(WifiCommand::Apply) => wifi::apply(&config, &runner),
     }
 }

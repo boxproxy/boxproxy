@@ -1,5 +1,6 @@
 use crate::config::ConfigOverrides;
 use crate::Result;
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use std::process;
 
@@ -64,251 +65,519 @@ pub(crate) struct Cli {
     pub(crate) command: Command,
 }
 
+#[derive(Debug, Parser)]
+#[command(
+    name = "boxctl",
+    about = "Control BoxProxy runtime service and routing rules",
+    disable_version_flag = true,
+    arg_required_else_help = true,
+    subcommand_required = true
+)]
+struct RawCli {
+    #[command(flatten)]
+    options: RawOptions,
+
+    #[command(subcommand)]
+    command: RawCommand,
+}
+
+#[derive(Debug, Args)]
+struct RawOptions {
+    #[arg(long, value_name = "PATH", help = "Box work directory")]
+    home: Option<String>,
+
+    #[arg(long, help = "Preview commands only")]
+    dry_run: bool,
+
+    #[arg(short, long, help = "Print commands before running them")]
+    verbose: bool,
+
+    #[arg(
+        long = "db",
+        alias = "db-path",
+        value_name = "PATH",
+        help = "Runtime database path"
+    )]
+    db_path: Option<PathBuf>,
+
+    #[arg(long = "core", alias = "bin", value_name = "NAME", help = "Core name")]
+    bin_name: Option<String>,
+
+    #[arg(long, value_name = "PATH", help = "Core binary path")]
+    bin_path: Option<PathBuf>,
+
+    #[arg(
+        long = "config",
+        alias = "config-path",
+        value_name = "PATH",
+        help = "Core config file"
+    )]
+    config_path: Option<PathBuf>,
+
+    #[arg(long, value_enum, value_name = "MODE", help = "Network mode")]
+    mode: Option<NetworkMode>,
+
+    #[arg(long, value_name = "MODE", help = "Proxy handling mode")]
+    proxy_mode: Option<String>,
+
+    #[arg(long, value_name = "PORT", help = "TPROXY port")]
+    tproxy_port: Option<String>,
+
+    #[arg(long, value_name = "PORT", help = "REDIRECT port")]
+    redir_port: Option<String>,
+
+    #[arg(long, value_name = "NAME", help = "TUN device name")]
+    tun_device: Option<String>,
+
+    #[arg(long, value_name = "MODE", help = "DNS hijack mode")]
+    dns_mode: Option<String>,
+
+    #[arg(long, value_name = "PORT", help = "Mihomo DNS forward port")]
+    dns_port: Option<String>,
+
+    #[arg(long, value_name = "MODE", help = "Mihomo DNS forward mode")]
+    dns_forward: Option<String>,
+
+    #[arg(long, conflicts_with = "no_ipv6", help = "Enable IPv6 proxying")]
+    ipv6: bool,
+
+    #[arg(long, conflicts_with = "ipv6", help = "Bypass IPv6 traffic")]
+    no_ipv6: bool,
+
+    #[arg(long, value_enum, value_name = "MODE", help = "IPv6 mode")]
+    ipv6_mode: Option<Ipv6Mode>,
+
+    #[arg(long, conflicts_with = "no_tcp", help = "Enable TCP proxying")]
+    tcp: bool,
+
+    #[arg(long, conflicts_with = "tcp", help = "Disable TCP proxying")]
+    no_tcp: bool,
+
+    #[arg(long, conflicts_with = "no_udp", help = "Enable UDP proxying")]
+    udp: bool,
+
+    #[arg(long, conflicts_with = "udp", help = "Disable UDP proxying")]
+    no_udp: bool,
+
+    #[arg(long, conflicts_with = "no_dns_tcp", help = "Enable TCP DNS hijacking")]
+    dns_tcp: bool,
+
+    #[arg(long, conflicts_with = "dns_tcp", help = "Disable TCP DNS hijacking")]
+    no_dns_tcp: bool,
+
+    #[arg(long, conflicts_with = "no_dns_udp", help = "Enable UDP DNS hijacking")]
+    dns_udp: bool,
+
+    #[arg(long, conflicts_with = "dns_udp", help = "Disable UDP DNS hijacking")]
+    no_dns_udp: bool,
+
+    #[arg(long, conflicts_with = "no_quic", help = "Enable QUIC")]
+    quic: bool,
+
+    #[arg(long, conflicts_with = "quic", help = "Disable QUIC")]
+    no_quic: bool,
+
+    #[arg(long, conflicts_with = "no_memcg", help = "Enable memory limit")]
+    memcg: bool,
+
+    #[arg(long, conflicts_with = "memcg", help = "Disable memory limit")]
+    no_memcg: bool,
+
+    #[arg(long, value_name = "LIMIT", help = "Memory limit, for example 100M")]
+    memcg_limit: Option<String>,
+
+    #[arg(
+        long = "taskset",
+        conflicts_with = "no_taskset",
+        help = "Enable CPU assignment with taskset"
+    )]
+    taskset: bool,
+
+    #[arg(
+        long = "no-taskset",
+        conflicts_with = "taskset",
+        help = "Disable CPU assignment"
+    )]
+    no_taskset: bool,
+
+    #[arg(long, value_name = "LIST", help = "Allowed CPU cores, for example 0-7")]
+    allow_cpu: Option<String>,
+
+    #[arg(long, conflicts_with = "no_blkio", help = "Enable disk I/O weight")]
+    blkio: bool,
+
+    #[arg(long, conflicts_with = "blkio", help = "Disable disk I/O weight")]
+    no_blkio: bool,
+
+    #[arg(
+        long = "io-weight",
+        alias = "weight",
+        value_name = "VALUE",
+        help = "Disk I/O weight"
+    )]
+    weight: Option<String>,
+
+    #[arg(long, conflicts_with = "no_bypass_cn", help = "Enable CNIP bypass")]
+    bypass_cn: bool,
+
+    #[arg(
+        long,
+        conflicts_with_all = ["bypass_cn", "bypass_cn_v4", "bypass_cn_v6"],
+        help = "Disable CNIP bypass"
+    )]
+    no_bypass_cn: bool,
+
+    #[arg(
+        long,
+        conflicts_with = "no_bypass_cn",
+        help = "Enable IPv4 CNIP bypass"
+    )]
+    bypass_cn_v4: bool,
+
+    #[arg(
+        long,
+        conflicts_with = "no_bypass_cn",
+        help = "Enable IPv6 CNIP bypass"
+    )]
+    bypass_cn_v6: bool,
+
+    #[arg(long, value_name = "PATH", help = "IPv4 CNIP CIDR file")]
+    cn_ip_file: Option<PathBuf>,
+
+    #[arg(long, value_name = "PATH", help = "IPv6 CNIP CIDR file")]
+    cn_ipv6_file: Option<PathBuf>,
+
+    #[arg(long, value_name = "CIDR", help = "Fake-IP IPv4 range")]
+    fake_ip_range: Option<String>,
+
+    #[arg(long, value_name = "CIDR", help = "Fake-IP IPv6 range")]
+    fake_ip6_range: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum NetworkMode {
+    Tun,
+    Tproxy,
+    Redirect,
+    Mixed,
+    Enhance,
+}
+
+impl NetworkMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Tun => "tun",
+            Self::Tproxy => "tproxy",
+            Self::Redirect => "redirect",
+            Self::Mixed => "mixed",
+            Self::Enhance => "enhance",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum Ipv6Mode {
+    #[value(alias = "enabled", alias = "true", alias = "1")]
+    Enable,
+    #[value(alias = "bypassed", alias = "false", alias = "0")]
+    Bypass,
+    #[value(alias = "disabled", alias = "system_disable", alias = "off")]
+    Disable,
+}
+
+impl Ipv6Mode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Enable => "enable",
+            Self::Bypass => "bypass",
+            Self::Disable => "disable",
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+#[command(rename_all = "kebab-case")]
+enum RawCommand {
+    Up {
+        #[arg(value_enum, value_name = "MODE")]
+        run_mode: Option<NetworkMode>,
+    },
+    Boot,
+    Down,
+    Restart {
+        #[arg(value_enum, value_name = "MODE")]
+        run_mode: Option<NetworkMode>,
+    },
+    Status,
+    Service {
+        #[command(subcommand)]
+        command: RawServiceCommand,
+    },
+    Mode {
+        #[command(subcommand)]
+        command: RawModeCommand,
+    },
+    Config {
+        #[command(subcommand)]
+        command: RawConfigCommand,
+    },
+    Resource {
+        #[command(subcommand)]
+        command: RawResourceCommand,
+    },
+    Cnip {
+        #[command(subcommand)]
+        command: RawCnipCommand,
+    },
+    Monitor {
+        #[command(subcommand)]
+        command: Option<RawMonitorCommand>,
+    },
+    Wifi {
+        #[command(subcommand)]
+        command: RawWifiCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+#[command(rename_all = "kebab-case")]
+enum RawServiceCommand {
+    Start,
+    Stop,
+    Restart,
+    Status,
+}
+
+#[derive(Debug, Subcommand)]
+#[command(rename_all = "kebab-case")]
+enum RawModeCommand {
+    Apply {
+        #[arg(value_enum, value_name = "MODE")]
+        run_mode: Option<NetworkMode>,
+    },
+    Clear,
+    Renew {
+        #[arg(value_enum, value_name = "MODE")]
+        run_mode: Option<NetworkMode>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+#[command(rename_all = "kebab-case")]
+enum RawConfigCommand {
+    Sync,
+}
+
+#[derive(Debug, Subcommand)]
+#[command(rename_all = "kebab-case")]
+enum RawResourceCommand {
+    Apply,
+}
+
+#[derive(Debug, Subcommand)]
+#[command(rename_all = "kebab-case")]
+enum RawCnipCommand {
+    Reload,
+}
+
+#[derive(Debug, Subcommand)]
+#[command(rename_all = "kebab-case")]
+enum RawMonitorCommand {
+    Stop,
+}
+
+#[derive(Debug, Subcommand)]
+#[command(rename_all = "kebab-case")]
+enum RawWifiCommand {
+    Apply,
+}
+
 pub(crate) fn parse_args(args: Vec<String>) -> Result<Cli> {
-    let mut home = None;
-    let mut dry_run = false;
-    let mut verbose = false;
-    let mut overrides = ConfigOverrides::default();
-    let mut rest = Vec::new();
-    let mut i = 0;
-
-    while i < args.len() {
-        // Normalize `--flag=value` into a key plus an inline value up front, so a
-        // single set of `--flag` arms handles both `--flag value` and
-        // `--flag=value` uniformly (the previous duplicated `=` arms covered only
-        // some flags). Positional args (no leading `--`) are never split.
-        let (key, inline) = match args[i].split_once('=') {
-            Some((flag, value)) if flag.starts_with("--") => (flag, Some(value.to_string())),
-            _ => (args[i].as_str(), None),
-        };
-        let inline = inline.as_deref();
-
-        match key {
-            "--home" => home = Some(value_for(key, inline, &args, &mut i)?),
-            "--dry-run" => dry_run = true,
-            "--verbose" | "-v" => verbose = true,
-            "--db" | "--db-path" => {
-                overrides.db_path = Some(PathBuf::from(value_for(key, inline, &args, &mut i)?));
-            }
-            "--core" | "--bin" => {
-                overrides.bin_name = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--bin-path" => {
-                overrides.bin_path = Some(PathBuf::from(value_for(key, inline, &args, &mut i)?));
-            }
-            "--config" | "--config-path" => {
-                overrides.config_path = Some(PathBuf::from(value_for(key, inline, &args, &mut i)?));
-            }
-            "--mode" => {
-                overrides.network_mode =
-                    Some(normalize_mode(&value_for(key, inline, &args, &mut i)?)?);
-            }
-            "--proxy-mode" => {
-                overrides.proxy_mode = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--tproxy-port" => {
-                overrides.tproxy_port = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--redir-port" => {
-                overrides.redir_port = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--tun-device" => {
-                overrides.tun_device = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--dns-mode" => {
-                overrides.dns_hijack_mode = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--dns-port" => {
-                overrides.mihomo_dns_port = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--dns-forward" => {
-                overrides.mihomo_dns_forward = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--ipv6" => overrides.ipv6_mode = Some("enable".to_string()),
-            "--no-ipv6" => overrides.ipv6_mode = Some("bypass".to_string()),
-            "--ipv6-mode" => {
-                overrides.ipv6_mode =
-                    Some(normalize_ipv6_mode(&value_for(key, inline, &args, &mut i)?)?);
-            }
-            "--tcp" => overrides.proxy_tcp = Some(true),
-            "--no-tcp" => overrides.proxy_tcp = Some(false),
-            "--udp" => overrides.proxy_udp = Some(true),
-            "--no-udp" => overrides.proxy_udp = Some(false),
-            "--dns-tcp" => overrides.dns_hijack_tcp = Some(true),
-            "--no-dns-tcp" => overrides.dns_hijack_tcp = Some(false),
-            "--dns-udp" => overrides.dns_hijack_udp = Some(true),
-            "--no-dns-udp" => overrides.dns_hijack_udp = Some(false),
-            "--quic" => overrides.quic = Some("enable".to_string()),
-            "--no-quic" => overrides.quic = Some("disable".to_string()),
-            "--memcg" => overrides.cgroup_memcg = Some(true),
-            "--no-memcg" => overrides.cgroup_memcg = Some(false),
-            "--memcg-limit" => {
-                overrides.memcg_limit = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--cpuset" => overrides.cgroup_cpuset = Some(true),
-            "--no-cpuset" => overrides.cgroup_cpuset = Some(false),
-            "--allow-cpu" => {
-                overrides.allow_cpu = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--blkio" => overrides.cgroup_blkio = Some(true),
-            "--no-blkio" => overrides.cgroup_blkio = Some(false),
-            "--io-weight" | "--weight" => {
-                overrides.weight = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--bypass-cn" => {
-                overrides.bypass_cn_ip = Some(true);
-                overrides.bypass_cn_ip_v4 = Some(true);
-                overrides.bypass_cn_ip_v6 = Some(true);
-            }
-            "--no-bypass-cn" => {
-                overrides.bypass_cn_ip = Some(false);
-                overrides.bypass_cn_ip_v4 = Some(false);
-                overrides.bypass_cn_ip_v6 = Some(false);
-            }
-            "--bypass-cn-v4" => {
-                overrides.bypass_cn_ip = Some(true);
-                overrides.bypass_cn_ip_v4 = Some(true);
-            }
-            "--bypass-cn-v6" => {
-                overrides.bypass_cn_ip = Some(true);
-                overrides.bypass_cn_ip_v6 = Some(true);
-            }
-            "--cn-ip-file" => {
-                overrides.cn_ip_file = Some(PathBuf::from(value_for(key, inline, &args, &mut i)?));
-            }
-            "--cn-ipv6-file" => {
-                overrides.cn_ipv6_file =
-                    Some(PathBuf::from(value_for(key, inline, &args, &mut i)?));
-            }
-            "--fake-ip-range" => {
-                overrides.fake_ip_range = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--fake-ip6-range" => {
-                overrides.fake_ip6_range = Some(value_for(key, inline, &args, &mut i)?);
-            }
-            "--help" | "-h" => {
-                print_usage();
+    let raw = match RawCli::try_parse_from(std::iter::once("boxctl".to_string()).chain(args)) {
+        Ok(raw) => raw,
+        Err(error) => match error.kind() {
+            clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
+                let _ = error.print();
                 process::exit(0);
             }
-            "--version" | "-V" => {
-                print_version();
-                process::exit(0);
-            }
-            _ => rest.push(args[i].clone()),
-        }
-        i += 1;
-    }
+            _ => return Err(error.to_string()),
+        },
+    };
 
-    if rest.is_empty() {
-        print_usage();
-        return Err("missing command".to_string());
-    }
-
-    let command = parse_command(&rest, &mut overrides)?;
-
-    Ok(Cli {
-        home,
-        dry_run,
-        verbose,
-        overrides,
-        command,
-    })
+    raw.into_cli()
 }
 
-fn parse_command(rest: &[String], overrides: &mut ConfigOverrides) -> Result<Command> {
-    if rest.first().map(String::as_str) == Some("monitor") {
-        return match rest {
-            [cmd] if cmd == "monitor" => Ok(Command::Monitor),
-            [cmd, action] if cmd == "monitor" && action == "stop" => Ok(Command::MonitorStop),
-            _ => {
-                print_usage();
-                Err(format!("unknown command: {}", rest.join(" ")))
-            }
-        };
+impl RawCli {
+    fn into_cli(self) -> Result<Cli> {
+        let mut overrides = self.options.into_overrides();
+        let command = self.command.into_command(&mut overrides)?;
+        Ok(Cli {
+            home: self.options.home,
+            dry_run: self.options.dry_run,
+            verbose: self.options.verbose,
+            overrides,
+            command,
+        })
     }
+}
 
-    match rest {
-        [cmd] => match cmd.as_str() {
-            "up" => Ok(Command::Up),
-            "boot" => Ok(Command::Boot),
-            "down" => Ok(Command::Down),
-            "restart" => Ok(Command::Restart),
-            "status" => Ok(Command::Status),
-            other => {
-                print_usage();
-                Err(format!("unknown command: {other}"))
+impl RawOptions {
+    fn into_overrides(&self) -> ConfigOverrides {
+        let mut overrides = ConfigOverrides::default();
+        overrides.db_path = self.db_path.clone();
+        overrides.bin_name = self.bin_name.clone();
+        overrides.bin_path = self.bin_path.clone();
+        overrides.config_path = self.config_path.clone();
+        overrides.network_mode = self.mode.map(|mode| mode.as_str().to_string());
+        overrides.proxy_mode = self.proxy_mode.clone();
+        overrides.tproxy_port = self.tproxy_port.clone();
+        overrides.redir_port = self.redir_port.clone();
+        overrides.tun_device = self.tun_device.clone();
+        overrides.dns_hijack_mode = self.dns_mode.clone();
+        overrides.mihomo_dns_port = self.dns_port.clone();
+        overrides.mihomo_dns_forward = self.dns_forward.clone();
+        overrides.ipv6_mode = self.ipv6_mode.map(|mode| mode.as_str().to_string());
+        set_flag(&mut overrides.ipv6_mode, self.ipv6, "enable");
+        set_flag(&mut overrides.ipv6_mode, self.no_ipv6, "bypass");
+        set_bool(&mut overrides.proxy_tcp, self.tcp, true);
+        set_bool(&mut overrides.proxy_tcp, self.no_tcp, false);
+        set_bool(&mut overrides.proxy_udp, self.udp, true);
+        set_bool(&mut overrides.proxy_udp, self.no_udp, false);
+        set_bool(&mut overrides.dns_hijack_tcp, self.dns_tcp, true);
+        set_bool(&mut overrides.dns_hijack_tcp, self.no_dns_tcp, false);
+        set_bool(&mut overrides.dns_hijack_udp, self.dns_udp, true);
+        set_bool(&mut overrides.dns_hijack_udp, self.no_dns_udp, false);
+        set_flag(&mut overrides.quic, self.quic, "enable");
+        set_flag(&mut overrides.quic, self.no_quic, "disable");
+        set_bool(&mut overrides.cgroup_memcg, self.memcg, true);
+        set_bool(&mut overrides.cgroup_memcg, self.no_memcg, false);
+        overrides.memcg_limit = self.memcg_limit.clone();
+        set_bool(&mut overrides.taskset_cpu, self.taskset, true);
+        set_bool(&mut overrides.taskset_cpu, self.no_taskset, false);
+        overrides.allow_cpu = self.allow_cpu.clone();
+        set_bool(&mut overrides.cgroup_blkio, self.blkio, true);
+        set_bool(&mut overrides.cgroup_blkio, self.no_blkio, false);
+        overrides.weight = self.weight.clone();
+        if self.bypass_cn {
+            overrides.bypass_cn_ip = Some(true);
+            overrides.bypass_cn_ip_v4 = Some(true);
+            overrides.bypass_cn_ip_v6 = Some(true);
+        }
+        if self.no_bypass_cn {
+            overrides.bypass_cn_ip = Some(false);
+            overrides.bypass_cn_ip_v4 = Some(false);
+            overrides.bypass_cn_ip_v6 = Some(false);
+        }
+        if self.bypass_cn_v4 {
+            overrides.bypass_cn_ip = Some(true);
+            overrides.bypass_cn_ip_v4 = Some(true);
+        }
+        if self.bypass_cn_v6 {
+            overrides.bypass_cn_ip = Some(true);
+            overrides.bypass_cn_ip_v6 = Some(true);
+        }
+        overrides.cn_ip_file = self.cn_ip_file.clone();
+        overrides.cn_ipv6_file = self.cn_ipv6_file.clone();
+        overrides.fake_ip_range = self.fake_ip_range.clone();
+        overrides.fake_ip6_range = self.fake_ip6_range.clone();
+        overrides
+    }
+}
+
+impl RawCommand {
+    fn into_command(self, overrides: &mut ConfigOverrides) -> Result<Command> {
+        Ok(match self {
+            Self::Up { run_mode } => {
+                set_mode_override(overrides, run_mode)?;
+                Command::Up
             }
-        },
-        [group, action] => match (group.as_str(), action.as_str()) {
-            ("service", "start") => Ok(Command::Service(ServiceCommand::Start)),
-            ("service", "stop") => Ok(Command::Service(ServiceCommand::Stop)),
-            ("service", "restart") => Ok(Command::Service(ServiceCommand::Restart)),
-            ("service", "status") => Ok(Command::Service(ServiceCommand::Status)),
-            ("mode", "apply") => Ok(Command::Mode(ModeCommand::Apply)),
-            ("mode", "clear") => Ok(Command::Mode(ModeCommand::Clear)),
-            ("mode", "renew") => Ok(Command::Mode(ModeCommand::Renew)),
-            ("config", "sync") => Ok(Command::Config(ConfigCommand::Sync)),
-            ("resource", "apply") => Ok(Command::Resource(ResourceCommand::Apply)),
-            ("cnip", "reload") => Ok(Command::Cnip(CnipCommand::Reload)),
-            ("wifi", "apply") => Ok(Command::Wifi(WifiCommand::Apply)),
-            ("up", mode) => {
-                set_mode_override(overrides, mode)?;
-                Ok(Command::Up)
+            Self::Boot => Command::Boot,
+            Self::Down => Command::Down,
+            Self::Restart { run_mode } => {
+                set_mode_override(overrides, run_mode)?;
+                Command::Restart
             }
-            ("restart", mode) => {
-                set_mode_override(overrides, mode)?;
-                Ok(Command::Restart)
+            Self::Status => Command::Status,
+            Self::Service { command } => Command::Service(command.into()),
+            Self::Mode { command } => command.into_command(overrides)?,
+            Self::Config { command } => Command::Config(command.into()),
+            Self::Resource { command } => Command::Resource(command.into()),
+            Self::Cnip { command } => Command::Cnip(command.into()),
+            Self::Monitor { command } => match command {
+                Some(RawMonitorCommand::Stop) => Command::MonitorStop,
+                None => Command::Monitor,
+            },
+            Self::Wifi { command } => Command::Wifi(command.into()),
+        })
+    }
+}
+
+impl RawModeCommand {
+    fn into_command(self, overrides: &mut ConfigOverrides) -> Result<Command> {
+        Ok(match self {
+            Self::Apply { run_mode } => {
+                set_mode_override(overrides, run_mode)?;
+                Command::Mode(ModeCommand::Apply)
             }
-            _ => {
-                print_usage();
-                Err(format!("unknown command: {}", rest.join(" ")))
+            Self::Clear => Command::Mode(ModeCommand::Clear),
+            Self::Renew { run_mode } => {
+                set_mode_override(overrides, run_mode)?;
+                Command::Mode(ModeCommand::Renew)
             }
-        },
-        [group, action, mode] => match (group.as_str(), action.as_str()) {
-            ("mode", "apply") => {
-                set_mode_override(overrides, mode)?;
-                Ok(Command::Mode(ModeCommand::Apply))
-            }
-            ("mode", "renew") => {
-                set_mode_override(overrides, mode)?;
-                Ok(Command::Mode(ModeCommand::Renew))
-            }
-            _ => {
-                print_usage();
-                Err(format!("unknown command: {}", rest.join(" ")))
-            }
-        },
-        _ => {
-            print_usage();
-            Err(format!("unknown command: {}", rest.join(" ")))
+        })
+    }
+}
+
+impl From<RawServiceCommand> for ServiceCommand {
+    fn from(value: RawServiceCommand) -> Self {
+        match value {
+            RawServiceCommand::Start => Self::Start,
+            RawServiceCommand::Stop => Self::Stop,
+            RawServiceCommand::Restart => Self::Restart,
+            RawServiceCommand::Status => Self::Status,
         }
     }
 }
 
-/// Resolve a value flag: prefer the inline `--flag=value` form, otherwise
-/// consume the next argument (advancing `i` past it).
-fn value_for(
-    flag: &str,
-    inline: Option<&str>,
-    args: &[String],
-    i: &mut usize,
-) -> Result<String> {
-    if let Some(value) = inline {
-        return Ok(value.to_string());
+impl From<RawConfigCommand> for ConfigCommand {
+    fn from(value: RawConfigCommand) -> Self {
+        match value {
+            RawConfigCommand::Sync => Self::Sync,
+        }
     }
-    *i += 1;
-    take_value(args, *i, flag)
 }
 
-fn take_value(args: &[String], index: usize, flag: &str) -> Result<String> {
-    args.get(index)
-        .filter(|value| !value.starts_with("--"))
-        .cloned()
-        .ok_or_else(|| format!("{flag} requires a value"))
+impl From<RawResourceCommand> for ResourceCommand {
+    fn from(value: RawResourceCommand) -> Self {
+        match value {
+            RawResourceCommand::Apply => Self::Apply,
+        }
+    }
 }
 
-fn set_mode_override(overrides: &mut ConfigOverrides, value: &str) -> Result<()> {
-    let mode = normalize_mode(value)?;
+impl From<RawCnipCommand> for CnipCommand {
+    fn from(value: RawCnipCommand) -> Self {
+        match value {
+            RawCnipCommand::Reload => Self::Reload,
+        }
+    }
+}
+
+impl From<RawWifiCommand> for WifiCommand {
+    fn from(value: RawWifiCommand) -> Self {
+        match value {
+            RawWifiCommand::Apply => Self::Apply,
+        }
+    }
+}
+
+fn set_mode_override(overrides: &mut ConfigOverrides, mode: Option<NetworkMode>) -> Result<()> {
+    let Some(mode) = mode else {
+        return Ok(());
+    };
+    let mode = mode.as_str().to_string();
     if let Some(current) = &overrides.network_mode {
         if current != &mode {
             return Err(format!(
@@ -320,65 +589,16 @@ fn set_mode_override(overrides: &mut ConfigOverrides, value: &str) -> Result<()>
     Ok(())
 }
 
-fn normalize_mode(value: &str) -> Result<String> {
-    match value {
-        "tun" | "tproxy" | "redirect" | "mixed" | "enhance" => Ok(value.to_string()),
-        other => Err(format!("unknown network mode: {other}")),
+fn set_bool(target: &mut Option<bool>, enabled: bool, value: bool) {
+    if enabled {
+        *target = Some(value);
     }
 }
 
-fn normalize_ipv6_mode(value: &str) -> Result<String> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "enable" | "enabled" | "true" | "1" => Ok("enable".to_string()),
-        "bypass" | "bypassed" | "false" | "0" => Ok("bypass".to_string()),
-        "disable" | "disabled" | "system_disable" | "off" => Ok("disable".to_string()),
-        other => Err(format!("unknown IPv6 mode: {other}")),
+fn set_flag(target: &mut Option<String>, enabled: bool, value: &str) {
+    if enabled {
+        *target = Some(value.to_string());
     }
-}
-
-fn print_usage() {
-    eprintln!(
-        "Usage:
-  boxctl [options] up [tun|tproxy|redirect|mixed|enhance]
-  boxctl [options] boot
-  boxctl [options] down
-  boxctl [options] restart [tun|tproxy|redirect|mixed|enhance]
-  boxctl [options] status
-  boxctl [options] service start|stop|restart|status
-  boxctl [options] mode apply [tun|tproxy|redirect|mixed|enhance]
-  boxctl [options] mode clear
-  boxctl [options] mode renew [tun|tproxy|redirect|mixed|enhance]
-  boxctl [options] config sync
-  boxctl [options] resource apply
-  boxctl [options] cnip reload
-  boxctl [options] wifi apply
-  boxctl [options] monitor
-  boxctl [options] monitor stop
-
-Options:
-  --home PATH              Box work directory, inferred from boxctl bin directory by default
-  --db PATH                Database path, defaults to box.db under the work directory
-  --core NAME              Core name, read from database by default
-  --config PATH            Core config file
-  --mode MODE              Network mode
-  --tun-device NAME        TUN device name
-  --tproxy-port PORT       TPROXY port
-  --redir-port PORT        REDIRECT port
-  --dns-mode MODE          DNS hijack mode: tproxy|redirect|disable
-  --dns-port PORT          DNS forward port
-  --ipv6                   Enable IPv6 proxying
-  --no-ipv6                Bypass IPv6
-  --ipv6-mode MODE         IPv6 mode: enable|bypass|disable
-  --memcg                  Enable memory limit
-  --memcg-limit LIMIT      Memory limit, for example 100M
-  --cpuset                 Enable CPU assignment
-  --allow-cpu LIST         Allowed CPU cores, for example 0-7
-  --blkio                  Enable disk I/O weight
-  --io-weight VALUE        I/O weight, default 900
-  --bypass-cn              Enable CNIP bypass
-  --dry-run                Preview commands only
-  --version                Show version"
-    );
 }
 
 pub(crate) fn print_version() {

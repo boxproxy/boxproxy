@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::core_config;
 use crate::exec::Runner;
-use crate::{logger, rules, service, wifi, Result};
+use crate::{logger, monitor, rules, service, wifi, Result};
 use logger::{arg, LogKey};
 use std::thread;
 
@@ -28,11 +28,10 @@ pub fn up(config: &Config, runner: &Runner) -> Result<()> {
         log_startup_failed(config, &err);
         return Err(err);
     }
-    if let Err(err) = wifi::monitor(config, runner) {
+    if let Err(err) = monitor::run(config, runner) {
         log_startup_failed(config, &err);
         return Err(err);
     }
-
     logger::info_key(config, LogKey::StartupCompleted, &[]);
     Ok(())
 }
@@ -40,7 +39,7 @@ pub fn up(config: &Config, runner: &Runner) -> Result<()> {
 pub fn boot(config: &Config, runner: &Runner) -> Result<()> {
     if config.wifi_network_control_enabled {
         wifi::apply(config, runner)?;
-        wifi::monitor(config, runner)?;
+        monitor::run(config, runner)?;
         return Ok(());
     }
 
@@ -66,7 +65,7 @@ pub fn down(config: &Config, runner: &Runner) -> Result<()> {
 
     rules_result?;
     service_result?;
-    wifi::monitor(config, runner)?;
+    monitor::run(config, runner)?;
     logger::warn_key(config, LogKey::StopCompleted, &[]);
     Ok(())
 }

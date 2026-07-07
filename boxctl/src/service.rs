@@ -29,11 +29,7 @@ pub fn start(config: &Config, runner: &Runner) -> Result<()> {
     match start_inner(config, runner) {
         Ok(()) => Ok(()),
         Err(err) => {
-            logger::error_key(
-                config,
-                LogKey::ServiceStartFailed,
-                &[arg("error", &err)],
-            );
+            logger::error_key(config, LogKey::ServiceStartFailed, &[arg("error", &err)]);
             Err(err)
         }
     }
@@ -107,7 +103,11 @@ fn start_inner(config: &Config, runner: &Runner) -> Result<()> {
         if !pid_matches_core(config, &pid.to_string()) {
             let _ = remove_pid(config);
             let detail = read_log_tail(&config.bin_log);
-            let detail = if detail.is_empty() { "-" } else { detail.as_str() };
+            let detail = if detail.is_empty() {
+                "-"
+            } else {
+                detail.as_str()
+            };
             logger::error_key(
                 config,
                 LogKey::ServiceExitedAfterStart,
@@ -125,7 +125,7 @@ fn start_inner(config: &Config, runner: &Runner) -> Result<()> {
         LogKey::ServiceStarted,
         &[arg("core", &config.bin_name), arg("pid", pid)],
     );
-    resource::apply(config, pid)?;
+    resource::apply(config, runner, pid)?;
     Ok(())
 }
 

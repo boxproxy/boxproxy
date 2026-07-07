@@ -108,7 +108,9 @@ fn core_bin_for_pid(pid: &str, names: &BTreeSet<&str>) -> Option<String> {
     }
 
     let cmdline = fs::read(proc_dir.join("cmdline")).ok()?;
-    let first_arg = cmdline.split(|byte| *byte == 0).find(|part| !part.is_empty())?;
+    let first_arg = cmdline
+        .split(|byte| *byte == 0)
+        .find(|part| !part.is_empty())?;
     let first_arg = String::from_utf8_lossy(first_arg);
     let first_name = Path::new(first_arg.as_ref())
         .file_name()

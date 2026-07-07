@@ -221,7 +221,8 @@ impl<'a> RuleManager<'a> {
             Family::V4 => &self.bypass_subnets_v4,
             Family::V6 => &self.bypass_subnets_v6,
         };
-        cell.get_or_init(|| self.compute_bypass_subnets(family)).clone()
+        cell.get_or_init(|| self.compute_bypass_subnets(family))
+            .clone()
     }
 
     fn compute_bypass_subnets(&self, family: Family) -> Vec<String> {
@@ -261,7 +262,8 @@ impl<'a> RuleManager<'a> {
             Family::V4 => &self.local_cidrs_v4,
             Family::V6 => &self.local_cidrs_v6,
         };
-        cell.get_or_init(|| self.compute_local_ip_cidrs(family)).clone()
+        cell.get_or_init(|| self.compute_local_ip_cidrs(family))
+            .clone()
     }
 
     fn compute_local_ip_cidrs(&self, family: Family) -> Vec<String> {
@@ -316,4 +318,3 @@ impl<'a> RuleManager<'a> {
         )
     }
 }
-

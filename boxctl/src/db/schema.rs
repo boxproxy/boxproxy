@@ -6,15 +6,14 @@ pub(super) fn ensure_schema(conn: &Connection) -> Result<()> {
     let current: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(|err| format!("read database schema version failed: {err}"))?;
-    if current >= SCHEMA_VERSION {
-        return Ok(());
+    if current < SCHEMA_VERSION {
+        migrate_schema(conn)?;
+
+        conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
+            .map_err(|err| format!("update database schema version failed: {err}"))?;
     }
 
-    migrate_schema(conn)?;
-
-    conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
-        .map_err(|err| format!("update database schema version failed: {err}"))?;
-    Ok(())
+    ensure_additive_schema(conn)
 }
 
 fn migrate_schema(conn: &Connection) -> Result<()> {
@@ -42,7 +41,7 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
             dns_hijack_mode TEXT NOT NULL,
             cgroup_memcg INTEGER NOT NULL,
             memcg_limit TEXT NOT NULL,
-            cgroup_cpuset INTEGER NOT NULL,
+            taskset_cpu INTEGER NOT NULL DEFAULT 0,
             allow_cpu TEXT NOT NULL,
             cgroup_blkio INTEGER NOT NULL,
             weight TEXT NOT NULL,
@@ -126,6 +125,10 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         "#,
     )
     .map_err(|err| format!("initialize database schema failed: {err}"))?;
+    ensure_additive_schema(conn)
+}
+
+fn ensure_additive_schema(conn: &Connection) -> Result<()> {
     ensure_column(
         conn,
         "runtime_profile",
@@ -143,6 +146,12 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         "runtime_profile",
         "ipv6_mode",
         "TEXT NOT NULL DEFAULT 'enable'",
+    )?;
+    ensure_column(
+        conn,
+        "runtime_profile",
+        "taskset_cpu",
+        "INTEGER NOT NULL DEFAULT 0",
     )?;
     ensure_column(
         conn,

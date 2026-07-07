@@ -9,7 +9,7 @@ pub(super) fn load_profile(conn: &Connection) -> Result<RuntimeData> {
                 config_name, tproxy_port, redir_port, quic, mihomo_dns_forward,
                 mihomo_dns_port,
                 proxy_tcp, proxy_udp, dns_hijack_tcp, dns_hijack_udp, dns_hijack_mode,
-                cgroup_memcg, memcg_limit, cgroup_cpuset, allow_cpu, cgroup_blkio, weight,
+                cgroup_memcg, memcg_limit, taskset_cpu, allow_cpu, cgroup_blkio, weight,
                 bypass_cn, tun_device, fake_ip_range, fake_ip6_range,
                 cn.bypass_ipv4, cn.bypass_ipv6, cn.ipv4_file, cn.ipv6_file,
                 cn.cnip_mode
@@ -40,7 +40,7 @@ pub(super) fn load_profile(conn: &Connection) -> Result<RuntimeData> {
                     dns_hijack_mode: row.get(17)?,
                     cgroup_memcg: row.get::<_, i64>(18)? != 0,
                     memcg_limit: row.get(19)?,
-                    cgroup_cpuset: row.get::<_, i64>(20)? != 0,
+                    taskset_cpu: row.get::<_, i64>(20)? != 0,
                     allow_cpu: row.get(21)?,
                     cgroup_blkio: row.get::<_, i64>(22)? != 0,
                     weight: row.get(23)?,

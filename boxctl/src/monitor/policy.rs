@@ -194,7 +194,7 @@ pub(super) fn start_service_if_needed(config: &Config, runner: &Runner) -> Resul
         return Ok(ServiceAction::AlreadyRunning);
     }
 
-    run_boxctl_service_command(config, runner, "up")?;
+    run_boxctl_service_command(config, "up")?;
     Ok(ServiceAction::Started)
 }
 
@@ -203,49 +203,28 @@ pub(super) fn stop_service_if_needed(config: &Config, runner: &Runner) -> Result
         return Ok(ServiceAction::AlreadyStopped);
     }
 
-    run_boxctl_service_command(config, runner, "down")?;
+    run_boxctl_service_command(config, "down")?;
     Ok(ServiceAction::Stopped)
 }
 
-pub(super) fn run_boxctl_service_command(
-    config: &Config,
-    runner: &Runner,
-    action: &str,
-) -> Result<()> {
+fn run_boxctl_service_command(config: &Config, action: &str) -> Result<()> {
     let exe = env::current_exe().unwrap_or_else(|_| config.paths.bin.join("boxctl"));
-    let program = exe.to_string_lossy().to_string();
-    let args = vec![
-        "--db".to_string(),
-        config.paths.db.display().to_string(),
-        action.to_string(),
-    ];
-
-    if runner.dry_run() {
-        runner.preview(&program, &args);
-        return Ok(());
-    }
-
-    let output = Command::new(&exe)
-        .args(&args)
-        .env_remove(WIFI_MONITOR_WORKER_ENV)
+    let status = Command::new(&exe)
+        .arg("--db")
+        .arg(config.paths.db.as_os_str())
+        .arg(action)
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|err| format!("execute {program} {action} failed: {err}"))?;
-
-    if output.status.success() {
-        return Ok(());
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|err| format!("execute {} {action} failed: {err}", exe.display()))?;
+    if !status.success() {
+        return Err(format!(
+            "execute {} {action} exited: {status}",
+            exe.display()
+        ));
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let detail = if stderr.is_empty() { stdout } else { stderr };
-    if detail.is_empty() {
-        Err(format!("{program} {action} failed"))
-    } else {
-        Err(format!("{program} {action} failed: {detail}"))
-    }
+    Ok(())
 }
 
 pub(super) fn refresh_local_ip_rules_if_running(config: &Config, runner: &Runner) -> Result<()> {

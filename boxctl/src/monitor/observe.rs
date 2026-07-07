@@ -62,9 +62,7 @@ pub(super) fn get_wifi_iface(runner: &Runner, wifi_status: Option<&str>) -> Stri
     if let Some(iface) =
         run_output(runner, "getprop", &["wifi.interface"]).map(|value| value.trim().to_string())
     {
-        if is_wifi_iface_name(&iface)
-            && runner.run_ok("ip", &["link", "show", iface.as_str()])
-        {
+        if is_wifi_iface_name(&iface) && runner.run_ok("ip", &["link", "show", iface.as_str()]) {
             return iface;
         }
     }
@@ -84,9 +82,7 @@ pub(super) fn get_wifi_iface(runner: &Runner, wifi_status: Option<&str>) -> Stri
                     .split('@')
                     .next()
                     .unwrap_or("wlan0");
-                if !iface.is_empty()
-                    && runner.run_ok("ip", &["link", "show", iface])
-                {
+                if !iface.is_empty() && runner.run_ok("ip", &["link", "show", iface]) {
                     return iface.to_string();
                 }
             }

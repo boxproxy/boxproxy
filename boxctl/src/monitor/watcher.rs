@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn monitor_worker_requested() -> bool {
-    env::var_os(WIFI_MONITOR_WORKER_ENV).is_some()
+    env::var_os(MONITOR_WORKER_ENV).is_some()
 }
 
 pub(super) fn monitor_worker(config: &Config, runner: &Runner) -> Result<()> {
@@ -25,10 +25,6 @@ pub(super) fn monitor_worker(config: &Config, runner: &Runner) -> Result<()> {
                 )
             }
         }
-        // Re-evaluate against live config before restarting: if the user turned
-        // network control off (or the service stopped in a non-tun mode), exit
-        // cleanly and release the lock instead of spinning forever waiting for an
-        // external `monitor stop`.
         let live_config = load_live_config(config);
         if !monitor_required(&live_config, runner) {
             return Ok(());
@@ -68,7 +64,7 @@ pub(super) fn stop_monitor_worker(config: &Config, runner: &Runner) -> Result<()
     }
 
     logger::info_key(config, LogKey::WifiMonitorStopped, &[]);
-    runner.signal(pid as i32, SIGTERM);
+    signal_monitor_process_group(runner, pid, SIGTERM);
     for _ in 0..20 {
         if !monitor_pid_matches(pid) {
             let _ = fs::remove_file(&path);
@@ -77,17 +73,35 @@ pub(super) fn stop_monitor_worker(config: &Config, runner: &Runner) -> Result<()
         thread::sleep(Duration::from_millis(100));
     }
 
-    runner.signal(pid as i32, SIGKILL);
+    signal_monitor_process_group(runner, pid, SIGKILL);
     let _ = fs::remove_file(path);
     Ok(())
+}
+
+fn signal_monitor_process_group(runner: &Runner, pid: u32, sig: i32) {
+    #[cfg(unix)]
+    {
+        if let Ok(pid_num) = i32::try_from(pid) {
+            runner.signal(-pid_num, sig);
+            runner.signal(pid_num, sig);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        if let Ok(pid_num) = i32::try_from(pid) {
+            runner.signal(pid_num, sig);
+        }
+    }
 }
 
 pub(super) fn spawn_monitor_worker(config: &Config) -> Result<()> {
     let exe = env::current_exe().unwrap_or_else(|_| config.paths.bin.join("boxctl"));
     let mut command = Command::new(exe);
     command
+        .arg("--db")
+        .arg(config.paths.db.as_os_str())
         .arg("monitor")
-        .env(WIFI_MONITOR_WORKER_ENV, "1")
+        .env(MONITOR_WORKER_ENV, "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

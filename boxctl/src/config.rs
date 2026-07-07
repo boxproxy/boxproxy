@@ -38,7 +38,7 @@ pub struct ConfigOverrides {
     pub clean_vendor_firewall: Option<bool>,
     pub cgroup_memcg: Option<bool>,
     pub memcg_limit: Option<String>,
-    pub cgroup_cpuset: Option<bool>,
+    pub taskset_cpu: Option<bool>,
     pub allow_cpu: Option<String>,
     pub cgroup_blkio: Option<bool>,
     pub weight: Option<String>,
@@ -84,7 +84,7 @@ pub struct Config {
     pub clean_vendor_firewall: bool,
     pub cgroup_memcg: bool,
     pub memcg_limit: String,
-    pub cgroup_cpuset: bool,
+    pub taskset_cpu: bool,
     pub allow_cpu: String,
     pub cgroup_blkio: bool,
     pub weight: String,
@@ -220,6 +220,10 @@ impl Config {
             ),
         };
 
+        let performance_mode = overrides
+            .performance_mode
+            .unwrap_or(db_data.performance_mode);
+        let cnip_mode = normalize_cnip_mode(&db_data.cnip_mode);
         let config = Self {
             paths: paths.clone(),
             log_language: normalize_log_language(&db_data.log_language),
@@ -285,9 +289,7 @@ impl Config {
                 .quic
                 .clone()
                 .unwrap_or_else(|| db_data.quic.clone()),
-            performance_mode: overrides
-                .performance_mode
-                .unwrap_or(db_data.performance_mode),
+            performance_mode,
             clean_vendor_firewall: overrides
                 .clean_vendor_firewall
                 .unwrap_or(db_data.clean_vendor_firewall),
@@ -296,7 +298,7 @@ impl Config {
                 .memcg_limit
                 .clone()
                 .unwrap_or_else(|| db_data.memcg_limit.clone()),
-            cgroup_cpuset: overrides.cgroup_cpuset.unwrap_or(db_data.cgroup_cpuset),
+            taskset_cpu: overrides.taskset_cpu.unwrap_or(db_data.taskset_cpu),
             allow_cpu: overrides
                 .allow_cpu
                 .clone()
@@ -307,7 +309,7 @@ impl Config {
                 .clone()
                 .unwrap_or_else(|| db_data.weight.clone()),
             bypass_cn_ip: overrides.bypass_cn_ip.unwrap_or(db_data.bypass_cn),
-            cnip_mode: db_data.cnip_mode,
+            cnip_mode,
             bypass_cn_ip_v4: overrides.bypass_cn_ip_v4.unwrap_or(db_data.bypass_cn_v4),
             bypass_cn_ip_v6: overrides.bypass_cn_ip_v6.unwrap_or(db_data.bypass_cn_v6),
             cn_ip_file: overrides
@@ -425,5 +427,12 @@ pub fn normalize_ipv6_mode(value: &str) -> String {
         "enable" | "enabled" | "true" | "1" => "enable".to_string(),
         "disable" | "disabled" | "system_disable" | "off" => "disable".to_string(),
         _ => "bypass".to_string(),
+    }
+}
+
+pub fn normalize_cnip_mode(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "ebpf" => "ebpf".to_string(),
+        _ => "ipset".to_string(),
     }
 }

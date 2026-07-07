@@ -91,9 +91,7 @@ impl<'a> RuleManager<'a> {
         mut base_for_proto: impl FnMut(&str) -> Option<Vec<String>>,
     ) -> Result<()> {
         for proto in ["tcp", "udp"] {
-            if proto == "tcp"
-                && (self.config.network_mode == "enhance" || !self.config.proxy_tcp)
-            {
+            if proto == "tcp" && (self.config.network_mode == "enhance" || !self.config.proxy_tcp) {
                 continue;
             }
             if proto == "udp" && !self.config.proxy_udp {

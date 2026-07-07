@@ -241,12 +241,14 @@ impl<'a> RuleManager<'a> {
     ) -> Result<()> {
         let cnip_required = self.cnip_ebpf_requested();
         let app_requested = self.app_uid_ebpf_requested(context);
-        let required = cnip_required || app_requested;
-        if !required {
+        if !cnip_required && !app_requested {
             return Ok(());
         }
 
         if !capabilities.bpf_match {
+            if !cnip_required {
+                return Ok(());
+            }
             let action = match mode {
                 EbpfApplyMode::Start => "enable",
                 EbpfApplyMode::UpdateThenStart => "refresh",
@@ -256,6 +258,9 @@ impl<'a> RuleManager<'a> {
             ));
         }
         if !self.config.bpf_matcher_path.is_file() {
+            if !cnip_required {
+                return Ok(());
+            }
             return Err(format!(
                 "eBPF matcher not found: {}",
                 self.config.bpf_matcher_path.display()
@@ -275,7 +280,7 @@ impl<'a> RuleManager<'a> {
         match mode {
             EbpfApplyMode::Start => {
                 self.run_ebpf_matcher("--clear", None, false)?;
-                match self.run_ebpf_matcher("--apply", Some(&config_path), required) {
+                match self.run_ebpf_matcher("--apply", Some(&config_path), cnip_required) {
                     Ok(()) => {
                         if cnip_required {
                             logger::info_key(self.config, LogKey::CnipEbpfLoaded, &[]);
@@ -297,7 +302,7 @@ impl<'a> RuleManager<'a> {
                             LogKey::EbpfMapHotUpdateFailed,
                             &[arg("error", err)],
                         );
-                        self.run_ebpf_matcher("--apply", Some(&config_path), required)
+                        self.run_ebpf_matcher("--apply", Some(&config_path), cnip_required)
                     }
                 }
             }

@@ -29,7 +29,7 @@ pub struct RuntimeData {
     pub dns_hijack_mode: String,
     pub cgroup_memcg: bool,
     pub memcg_limit: String,
-    pub cgroup_cpuset: bool,
+    pub taskset_cpu: bool,
     pub allow_cpu: String,
     pub cgroup_blkio: bool,
     pub weight: String,

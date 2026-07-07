@@ -5,14 +5,9 @@ const CAP_CACHE_FILE: &str = "iptables.cap.cache";
 impl<'a> RuleManager<'a> {
     pub(super) fn probe_capabilities(&self) -> &Capabilities {
         self.capabilities.get_or_init(|| {
-            // dry-run uses a fixed all-true profile and must never touch disk.
             if self.runner.dry_run() {
                 return self.probe_capabilities_raw();
             }
-            // Reuse the on-disk profile when it was written under the same boot
-            // (kernel/iptables modules unchanged) and the same config flags that
-            // gate probing. The old shell cached this per boot_id; the first Rust
-            // rewrite re-ran ~10+ iptables forks on every invocation.
             if let Some(caps) = self.load_capability_cache() {
                 return caps;
             }
@@ -26,14 +21,10 @@ impl<'a> RuleManager<'a> {
         self.config.paths.state.join(CAP_CACHE_FILE)
     }
 
-    /// Marker that ties a cached profile to a boot and to the config flags that
-    /// influence probing (`bypass_cn_ip` -> ipset, `ipv6` -> ip6_nat/restore6).
     fn capability_cache_signature(&self) -> Option<String> {
         let boot_id = fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
         let boot_id = boot_id.trim();
         if boot_id.is_empty() {
-            // Without a stable boot id we cannot tell a stale cache from a fresh
-            // one, so skip caching rather than risk reusing pre-reboot results.
             return None;
         }
         Some(format!(
@@ -150,10 +141,6 @@ impl<'a> RuleManager<'a> {
         caps
     }
 
-    /// Probe whether `iptables-restore --noflush` is usable for this family by
-    /// loading a throwaway box chain through stdin. Modern Android ships it
-    /// (netd itself uses it), but a minimal ROM might not, so we verify the
-    /// exact invocation we rely on and fall back to per-rule application.
     pub(super) fn probe_restore_support(&self, family: Family) -> bool {
         const PROBE_CHAIN: &str = "BOX_RESTORE_PROBE";
         let probe = format!("*mangle\n:{PROBE_CHAIN} - [0:0]\nCOMMIT\n");
@@ -164,7 +151,6 @@ impl<'a> RuleManager<'a> {
             .map(|output| output.ok)
             .unwrap_or(false);
 
-        // Best-effort cleanup of the probe chain regardless of the outcome.
         self.ipt_silent(family, &["-t", "mangle", "-F", PROBE_CHAIN]);
         self.ipt_silent(family, &["-t", "mangle", "-X", PROBE_CHAIN]);
         ok
