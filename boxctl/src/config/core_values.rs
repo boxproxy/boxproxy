@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::Path;
 
+use jsonc_parser::ParseOptions;
+
 #[derive(Default)]
 pub(super) struct CoreConfigValues {
     pub(super) read_status: String,
@@ -32,37 +34,85 @@ impl CoreConfigValues {
     }
 
     fn read_mihomo(text: &str, network_mode: &str) -> Self {
+        let values: serde_yaml::Value = serde_yaml::from_str(&text).unwrap();
         Self {
             read_status: "read mihomo config".to_string(),
-            mihomo_dns_port: mihomo_dns_port(text),
+            mihomo_dns_port: values.get("dns").unwrap().get("listen").and_then(|v| {
+                v.as_str()
+                    .unwrap()
+                    .split_once(':')
+                    .and_then(|v| Some(v.1.to_string()))
+            }),
             tun_device: if matches!(network_mode, "tun" | "mixed") {
-                nested_yaml_scalar(text, "tun", "device")
-                    .or_else(|| yaml_scalar(text, "device"))
-                    .filter(|value| !value.is_empty())
+                values.get("tun").and_then(|v| {
+                    v.get("device")
+                        .map_or_else(|| None, |v| Some(v.as_str().unwrap().to_string()))
+                })
             } else {
                 None
             },
-            fake_ip_range: nested_yaml_scalar(text, "dns", "fake-ip-range")
-                .or_else(|| yaml_scalar(text, "fake-ip-range"))
-                .filter(|value| !value.is_empty()),
-            fake_ip6_range: nested_yaml_scalar(text, "dns", "fake-ip-range6")
-                .or_else(|| yaml_scalar(text, "fake-ip-range6"))
-                .filter(|value| !value.is_empty()),
+            fake_ip_range: values
+                .get("dns")
+                .unwrap()
+                .get("fake-ip-range")
+                .and_then(|v| Some(v.as_str().unwrap().to_string())),
+            fake_ip6_range: values
+                .get("dns")
+                .unwrap()
+                .get("fake-ip-range6")
+                .and_then(|v| Some(v.as_str().unwrap().to_string())),
         }
     }
 
     fn read_sing_box(text: &str, network_mode: &str) -> Self {
+        let values: serde_json::Value =
+            jsonc_parser::parse_to_serde_value(&text, &ParseOptions::default()).unwrap();
         Self {
             read_status: "read sing-box config".to_string(),
             mihomo_dns_port: None,
             tun_device: if matches!(network_mode, "tun" | "mixed") {
-                json_string_value(text, "interface_name").filter(|value| !value.is_empty())
+                values
+                    .get("inbounds")
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|v| v.get("interface_name").is_some())
+                    .and_then(|v| {
+                        v.get("interface_name")
+                            .and_then(|v| Some(v.as_str().unwrap().to_string()))
+                    })
+
+                // json_string_value(text, "interface_name").filter(|value| !value.is_empty())
             } else {
                 None
             },
-            fake_ip_range: json_string_value(text, "inet4_range").filter(|value| !value.is_empty()),
-            fake_ip6_range: json_string_value(text, "inet6_range")
-                .filter(|value| !value.is_empty()),
+            fake_ip_range: values
+                .get("dns")
+                .unwrap()
+                .get("servers")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|v| v.get("inet4_range").is_some())
+                .and_then(|v| {
+                    v.get("inet4_range")
+                        .and_then(|v| Some(v.as_str().unwrap().to_string()))
+                }),
+            fake_ip6_range: values
+                .get("dns")
+                .unwrap()
+                .get("servers")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|v| v.get("inet6_range").is_some())
+                .and_then(|v| {
+                    v.get("inet6_range")
+                        .and_then(|v| Some(v.as_str().unwrap().to_string()))
+                }),
         }
     }
 }
@@ -148,120 +198,4 @@ pub(super) fn default_fake_ip6_range(bin_name: &str) -> String {
     } else {
         String::new()
     }
-}
-
-fn mihomo_dns_port(text: &str) -> Option<String> {
-    nested_yaml_scalar(text, "dns", "listen").and_then(|listen| port_from_listen(&listen))
-}
-
-fn port_from_listen(value: &str) -> Option<String> {
-    let value = value.trim().trim_matches('"').trim_matches('\'');
-    let port = value.rsplit(':').next()?.trim();
-    if !port.is_empty() && port.chars().all(|ch| ch.is_ascii_digit()) {
-        Some(port.to_string())
-    } else {
-        None
-    }
-}
-
-fn yaml_scalar(text: &str, key: &str) -> Option<String> {
-    let prefix = format!("{key}:");
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with('#') || trimmed.starts_with('-') {
-            continue;
-        }
-        if let Some(value) = trimmed.strip_prefix(&prefix) {
-            return Some(clean_yaml_scalar(value));
-        }
-    }
-    None
-}
-
-fn nested_yaml_scalar(text: &str, block: &str, key: &str) -> Option<String> {
-    let block_prefix = format!("{block}:");
-    let key_prefix = format!("{key}:");
-    let mut in_block = false;
-    let mut block_indent = 0usize;
-
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with('#') {
-            continue;
-        }
-
-        let indent = leading_indent(line);
-        if !trimmed.is_empty() && indent <= block_indent && !trimmed.starts_with('-') {
-            in_block = trimmed.starts_with(&block_prefix);
-            block_indent = if in_block { indent } else { 0 };
-            if in_block {
-                continue;
-            }
-        }
-
-        if in_block && indent > block_indent {
-            if let Some(value) = trimmed.strip_prefix(&key_prefix) {
-                return Some(clean_yaml_scalar(value));
-            }
-        }
-    }
-    None
-}
-
-fn clean_yaml_scalar(value: &str) -> String {
-    value
-        .split('#')
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .trim_matches('"')
-        .trim_matches('\'')
-        .to_string()
-}
-
-fn json_string_value(text: &str, key: &str) -> Option<String> {
-    let quoted = format!("\"{key}\"");
-    let mut pos = 0usize;
-    while let Some(relative) = text[pos..].find(&quoted) {
-        let key_start = pos + relative;
-        let colon = text[key_start + quoted.len()..].find(':')? + key_start + quoted.len();
-        let value_start = text[colon + 1..].find(|ch: char| !ch.is_whitespace())? + colon + 1;
-        if text.as_bytes().get(value_start).copied()? != b'"' {
-            pos = value_start + 1;
-            continue;
-        }
-        return read_json_string(text, value_start);
-    }
-    None
-}
-
-fn read_json_string(text: &str, start: usize) -> Option<String> {
-    let bytes = text.as_bytes();
-    if bytes.get(start).copied()? != b'"' {
-        return None;
-    }
-    let mut escape = false;
-    let mut output = String::new();
-    let mut i = start + 1;
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
-        if escape {
-            output.push(ch);
-            escape = false;
-        } else if ch == '\\' {
-            escape = true;
-        } else if ch == '"' {
-            return Some(output);
-        } else {
-            output.push(ch);
-        }
-        i += 1;
-    }
-    None
-}
-
-fn leading_indent(line: &str) -> usize {
-    line.chars()
-        .take_while(|ch| *ch == ' ' || *ch == '\t')
-        .count()
 }
