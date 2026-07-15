@@ -89,6 +89,7 @@ pub enum LogKey {
     FamilyRuleFailed,
     FamilyRulesSkipped,
     Ip6NatUnavailable,
+    Ipv6DnsFallbackApplied,
     CoreBypassFallback,
     PerformanceAddrtypeFallback,
     DnsCoreBypassFailed,

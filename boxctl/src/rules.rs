@@ -37,6 +37,7 @@ const TUN_BYPASS_PREF: &str = "98";
 const TUN_ROUTE_MARK: &str = "50331648/50331648";
 const TUN_ROUTE_TABLE: &str = "2025";
 const TUN_ROUTE_PREF: &str = "99";
+const IPV6_DNS_FALLBACK_CHAIN: &str = "BOX_DNS6_FALLBACK";
 const EBPF_PIN_DIR: &str = "/sys/fs/bpf/box";
 const EBPF_OUT4: &str = "/sys/fs/bpf/box/box_cidr_out4";
 const EBPF_OUT6: &str = "/sys/fs/bpf/box/box_cidr_out6";
