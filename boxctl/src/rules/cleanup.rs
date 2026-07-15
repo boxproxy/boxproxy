@@ -80,6 +80,7 @@ impl<'a> RuleManager<'a> {
             }
         }
         if family == Family::V6 {
+            self.cleanup_ipv6_dns_fallback();
             self.del_rule(
                 family,
                 "filter",

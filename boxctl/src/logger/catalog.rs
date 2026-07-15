@@ -69,6 +69,9 @@ fn en_template(key: LogKey) -> &'static str {
         LogKey::FamilyRuleFailed => "{family} {kind} rule creation failed: {error}",
         LogKey::FamilyRulesSkipped => "{family} {kind} skipped: {error}",
         LogKey::Ip6NatUnavailable => "ip6tables NAT unavailable, skip IPv6 {target}",
+        LogKey::Ipv6DnsFallbackApplied => {
+            "IPv6 DNS fallback applied: reject app {protocols} port 53 and use IPv4 core DNS"
+        }
         LogKey::CoreBypassFallback => "Core owner bypass failed, falling back to mark bypass",
         LogKey::PerformanceAddrtypeFallback => "{family} performance bypass: addrtype unavailable, using loopback fallback",
         LogKey::DnsCoreBypassFailed => "{target} core process bypass failed: owner match unavailable, DNS loopback may occur",
@@ -163,6 +166,9 @@ fn zh_template(key: LogKey) -> &'static str {
         LogKey::FamilyRuleFailed => "{family} {kind} 规则创建失败: {error}",
         LogKey::FamilyRulesSkipped => "{family} {kind} 已跳过: {error}",
         LogKey::Ip6NatUnavailable => "ip6tables NAT 不可用, 跳过 IPv6 {target}",
+        LogKey::Ipv6DnsFallbackApplied => {
+            "IPv6 DNS 回退已应用: 拒绝应用 {protocols} 53 端口并改用 IPv4 核心 DNS"
+        }
         LogKey::CoreBypassFallback => "核心 owner 绕过失败, 回退到 mark 绕过",
         LogKey::PerformanceAddrtypeFallback => "{family} 性能旁路: addrtype 不可用, 回退到显式回环",
         LogKey::DnsCoreBypassFailed => "{target} 核心进程绕过失败: owner 匹配不可用, 可能出现 DNS 回环",

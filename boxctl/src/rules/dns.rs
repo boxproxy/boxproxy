@@ -47,7 +47,7 @@ impl<'a> RuleManager<'a> {
                 LogKey::Ip6NatUnavailable,
                 &[logger::nat_target_arg("target", "DNS redirect")],
             );
-            return Ok(());
+            return self.setup_ipv6_dns_fallback(context);
         }
 
         let kind = if self.dns_mode_is_redirect() {
@@ -56,6 +56,57 @@ impl<'a> RuleManager<'a> {
             DnsNatKind::Forward
         };
         self.setup_nat_dns_chain(family, kind, context)
+    }
+
+    pub(super) fn setup_ipv6_dns_fallback(&self, context: &RuleContext) -> Result<()> {
+        self.ensure_chain(Family::V6, "filter", IPV6_DNS_FALLBACK_CHAIN)?;
+        if !self.add_core_bypass_rule(Family::V6, "filter", IPV6_DNS_FALLBACK_CHAIN, "-A", context)
+        {
+            self.cleanup_ipv6_dns_fallback();
+            logger::warn_key(
+                self.config,
+                LogKey::DnsCoreBypassFailed,
+                &[logger::dns_nat_target_arg("target", "IPv6 fallback")],
+            );
+            return Ok(());
+        }
+
+        let mut protocols = Vec::new();
+        if self.dns_tcp_enabled() {
+            self.ensure_rule_append(
+                Family::V6,
+                "filter",
+                IPV6_DNS_FALLBACK_CHAIN,
+                &["-p", "tcp", "--dport", "53", "-j", "REJECT"],
+            )?;
+            protocols.push("TCP");
+        }
+        if self.dns_udp_enabled() {
+            self.ensure_rule_append(
+                Family::V6,
+                "filter",
+                IPV6_DNS_FALLBACK_CHAIN,
+                &["-p", "udp", "--dport", "53", "-j", "REJECT"],
+            )?;
+            protocols.push("UDP");
+        }
+        if protocols.is_empty() {
+            self.cleanup_ipv6_dns_fallback();
+            return Ok(());
+        }
+
+        self.ensure_jump(Family::V6, "filter", "OUTPUT", IPV6_DNS_FALLBACK_CHAIN)?;
+        logger::info_key(
+            self.config,
+            LogKey::Ipv6DnsFallbackApplied,
+            &[arg("protocols", protocols.join("/"))],
+        );
+        Ok(())
+    }
+
+    pub(super) fn cleanup_ipv6_dns_fallback(&self) {
+        self.del_jump(Family::V6, "filter", "OUTPUT", IPV6_DNS_FALLBACK_CHAIN);
+        self.cleanup_chain_fast(Family::V6, "filter", IPV6_DNS_FALLBACK_CHAIN);
     }
 
     pub(super) fn setup_nat_dns_chain(
